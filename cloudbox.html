@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CloudBox – Deine Dateien, überall</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', system-ui, sans-serif; }
+#drop-zone.drag-over { border-color: #2563eb; background-color: #eff6ff; }
+.file-card { transition: transform .15s ease, box-shadow .15s ease; }
+.file-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,.06); }
+.progress-bar-bg { background: #e5e7eb; border-radius: 9999px; overflow: hidden; height: 6px; }
+.progress-bar-fill { background: #2563eb; height: 100%; transition: width .2s ease; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 8px; }
+.fade-in { animation: fadeIn .25s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body class="bg-gray-50 text-gray-800 antialiased">
+
+<!-- ===================== AUTH VIEW ===================== -->
+<div id="auth-view" class="min-h-screen flex items-center justify-center px-4">
+  <div class="w-full max-w-md bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+    <div class="flex items-center gap-2 justify-center mb-6">
+      <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold">C</div>
+      <h1 class="text-2xl font-bold text-gray-800">CloudBox</h1>
+    </div>
+
+    <div class="flex bg-gray-100 rounded-xl p-1 mb-6">
+      <button id="tab-login" class="flex-1 py-2 rounded-lg text-sm font-semibold bg-white shadow text-blue-600">Anmelden</button>
+      <button id="tab-register" class="flex-1 py-2 rounded-lg text-sm font-semibold text-gray-500">Registrieren</button>
+    </div>
+
+    <form id="login-form" class="space-y-4">
+      <input type="email" id="login-email" placeholder="E-Mail" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm">
+      <input type="password" id="login-password" placeholder="Passwort" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm">
+      <p id="login-error" class="text-red-500 text-sm hidden"></p>
+      <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm transition">Anmelden</button>
+    </form>
+
+    <form id="register-form" class="space-y-4 hidden">
+      <input type="text" id="register-name" placeholder="Vollständiger Name" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm">
+      <input type="text" id="register-displayname" placeholder="Öffentlicher Anzeigename" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm">
+      <input type="email" id="register-email" placeholder="E-Mail" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm">
+      <input type="password" id="register-password" placeholder="Passwort (min. 6 Zeichen)" required class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm">
+      <p id="register-error" class="text-red-500 text-sm hidden"></p>
+      <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold text-sm transition">Konto erstellen</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== APP VIEW ===================== -->
+<div id="app-view" class="hidden min-h-screen flex flex-col md:flex-row">
+  <aside class="md:w-64 bg-white border-r border-gray-100 flex md:flex-col justify-between md:justify-start p-4 md:p-6 sticky top-0 z-20">
+    <div class="flex md:flex-col w-full gap-4 md:gap-8 items-center md:items-stretch">
+      <div class="flex items-center gap-2">
+        <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold">C</div>
+        <span class="font-bold text-lg hidden md:inline">CloudBox</span>
+      </div>
+
+      <button id="upload-btn" class="hidden md:flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-4 py-3 font-semibold text-sm shadow">
+        <i data-lucide="plus" class="w-4 h-4"></i> Neu / Upload
+      </button>
+
+      <nav class="hidden md:flex flex-col gap-1 text-sm font-medium">
+        <button data-folder="root" class="folder-btn flex items-center gap-3 px-3 py-2 rounded-lg bg-blue-50 text-blue-700">
+          <i data-lucide="hard-drive" class="w-4 h-4"></i> Meine Dateien
+        </button>
+        <button data-folder="favorite" class="folder-btn flex items-center gap-3 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50">
+          <i data-lucide="star" class="w-4 h-4"></i> Favoriten
+        </button>
+        <button data-folder="trash" class="folder-btn flex items-center gap-3 px-3 py-2 rounded-lg text-gray-600 hover:bg-gray-50">
+          <i data-lucide="trash-2" class="w-4 h-4"></i> Papierkorb
+        </button>
+        <button id="admin-nav-btn" class="hidden flex items-center gap-3 px-3 py-2 rounded-lg text-purple-700 hover:bg-purple-50">
+          <i data-lucide="shield" class="w-4 h-4"></i> Admin-Panel
+        </button>
+      </nav>
+
+      <div class="hidden md:block mt-auto pt-6 border-t border-gray-100">
+        <div class="text-xs text-gray-500 mb-1">Speicher belegt</div>
+        <div class="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div id="storage-bar" class="h-full bg-blue-600 rounded-full" style="width:0%"></div>
+        </div>
+        <div id="storage-text" class="text-xs text-gray-400 mt-1">0 MB verwendet</div>
+      </div>
+    </div>
+
+    <button id="logout-btn" class="md:mt-4 flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-red-600">
+      <i data-lucide="log-out" class="w-4 h-4"></i> <span class="hidden md:inline">Abmelden</span>
+    </button>
+  </aside>
+
+  <main class="flex-1 p-4 md:p-8 overflow-y-auto">
+    <div class="flex flex-col md:flex-row md:items-center gap-4 mb-6">
+      <div class="relative flex-1">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3.5 text-gray-400"></i>
+        <input id="search-input" type="text" placeholder="Dateien durchsuchen…" class="w-full pl-9 pr-4 py-3 rounded-xl bg-white border border-gray-200 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="view-grid" class="p-2.5 rounded-lg bg-blue-50 text-blue-600"><i data-lucide="grid-2x2" class="w-4 h-4"></i></button>
+        <button id="view-list" class="p-2.5 rounded-lg text-gray-500 hover:bg-gray-100"><i data-lucide="list" class="w-4 h-4"></i></button>
+        <span id="user-badge" class="ml-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-full px-3 py-1.5"></span>
+      </div>
+    </div>
+
+    <h2 id="folder-title" class="text-xl font-bold mb-4">Meine Dateien</h2>
+
+    <div id="drop-zone" class="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center text-gray-400 mb-6 hover:border-blue-400 transition cursor-pointer">
+      <i data-lucide="upload-cloud" class="w-8 h-8 mx-auto mb-2"></i>
+      <p class="text-sm">Dateien hier ablegen oder klicken zum Hochladen</p>
+      <input type="file" id="file-input" multiple class="hidden">
+    </div>
+
+    <div id="upload-progress-list" class="space-y-2 mb-6"></div>
+
+    <div id="file-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"></div>
+    <div id="empty-state" class="hidden text-center text-gray-400 py-16">
+      <i data-lucide="folder-open" class="w-10 h-10 mx-auto mb-2"></i>
+      <p>Keine Dateien vorhanden.</p>
+    </div>
+
+    <button id="load-more-btn" class="hidden mt-6 mx-auto block px-5 py-2.5 rounded-xl bg-white border border-gray-200 text-sm font-medium hover:bg-gray-50">Weitere laden</button>
+  </main>
+</div>
+
+<!-- ===================== ADMIN VIEW ===================== -->
+<div id="admin-view" class="hidden min-h-screen p-4 md:p-8 bg-gray-50">
+  <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center gap-3">
+      <i data-lucide="shield" class="w-6 h-6 text-purple-600"></i>
+      <h1 class="text-2xl font-bold">Admin-Panel</h1>
+    </div>
+    <button id="admin-back-btn" class="px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-medium">Zurück zum Dashboard</button>
+  </div>
+
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div class="bg-white rounded-2xl p-5 border border-gray-100">
+      <p class="text-xs text-gray-400 mb-1">Registrierte Nutzer</p>
+      <p id="stat-users" class="text-2xl font-bold">0</p>
+    </div>
+    <div class="bg-white rounded-2xl p-5 border border-gray-100">
+      <p class="text-xs text-gray-400 mb-1">Dateien gesamt</p>
+      <p id="stat-files" class="text-2xl font-bold">0</p>
+    </div>
+    <div class="bg-white rounded-2xl p-5 border border-gray-100">
+      <p class="text-xs text-gray-400 mb-1">Speicher gesamt</p>
+      <p id="stat-storage" class="text-2xl font-bold">0 MB</p>
+    </div>
+    <div class="bg-white rounded-2xl p-5 border border-gray-100">
+      <p class="text-xs text-gray-400 mb-1">Uploads (7 Tage)</p>
+      <p id="stat-uploads-week" class="text-2xl font-bold">0</p>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-2xl border border-gray-100 mb-8 overflow-x-auto">
+    <div class="p-5 border-b border-gray-100 flex items-center justify-between">
+      <h2 class="font-semibold">Nutzerverwaltung</h2>
+      <input id="admin-user-search" placeholder="Nutzer suchen…" class="px-3 py-2 rounded-lg border border-gray-200 text-sm">
+    </div>
+    <table class="w-full text-sm">
+      <thead class="text-gray-400 text-left">
+        <tr>
+          <th class="p-4">Name</th><th class="p-4">E-Mail</th><th class="p-4">Registriert</th><th class="p-4">Speicher</th><th class="p-4">Status</th><th class="p-4">Aktionen</th>
+        </tr>
+      </thead>
+      <tbody id="admin-users-table"></tbody>
+    </table>
+  </div>
+
+  <div class="bg-white rounded-2xl border border-gray-100 overflow-x-auto">
+    <div class="p-5 border-b border-gray-100 flex items-center justify-between">
+      <h2 class="font-semibold">Systemweite Dateiverwaltung</h2>
+      <input id="admin-file-search" placeholder="Datei suchen…" class="px-3 py-2 rounded-lg border border-gray-200 text-sm">
+    </div>
+    <table class="w-full text-sm">
+      <thead class="text-gray-400 text-left">
+        <tr><th class="p-4">Datei</th><th class="p-4">Besitzer</th><th class="p-4">Größe</th><th class="p-4">Hochgeladen</th><th class="p-4">Aktionen</th></tr>
+      </thead>
+      <tbody id="admin-files-table"></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="toast" class="hidden fixed bottom-6 right-6 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-lg text-sm z-50"></div>
+
+<script type="module">
+/* =========================================================================
+   FIREBASE CONFIG & HELFER
+   ========================================================================= */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  signOut, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore, doc, setDoc, getDoc, collection, query, where, getDocs,
+  serverTimestamp, runTransaction, addDoc, updateDoc, deleteDoc, orderBy,
+  limit, startAfter, increment
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+
+// TODO: Trage hier deine eigenen Firebase-Projektdaten ein
+// (Firebase Console -> Projekteinstellungen -> "Web-App hinzufügen")
+const firebaseConfig = {
+  apiKey: "DEIN_API_KEY",
+  authDomain: "DEIN_PROJEKT.firebaseapp.com",
+  projectId: "DEIN_PROJEKT",
+  storageBucket: "DEIN_PROJEKT.appspot.com",
+  messagingSenderId: "DEINE_SENDER_ID",
+  appId: "DEINE_APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
+
+const PROTECTED_ADMIN_NAME = "Julian";
+
+function showToast(message, isError = false) {
+  const toast = document.getElementById("toast");
+  toast.textContent = message;
+  toast.classList.remove("hidden", "bg-gray-900", "bg-red-600");
+  toast.classList.add(isError ? "bg-red-600" : "bg-gray-900");
+  clearTimeout(window.__toastTimeout);
+  window.__toastTimeout = setTimeout(() => toast.classList.add("hidden"), 3200);
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0, val = bytes;
+  while (val >= 1024 && i < units.length - 1) { val /= 1024; i++; }
+  return `${val.toFixed(1)} ${units[i]}`;
+}
+
+function formatDate(ts) {
+  if (!ts) return "-";
+  const date = ts.toDate ? ts.toDate() : new Date(ts);
+  return date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+/* =========================================================================
+   AUTH: Registrierung, Login, Logout, "Julian"-Admin-Sperre
+   ========================================================================= */
+let currentUserProfile = null;
+
+const authView = document.getElementById("auth-view");
+const appView = document.getElementById("app-view");
+const adminView = document.getElementById("admin-view");
+
+const tabLogin = document.getElementById("tab-login");
+const tabRegister = document.getElementById("tab-register");
+const loginForm = document.getElementById("login-form");
+const registerForm = document.getElementById("register-form");
+
+tabLogin.addEventListener("click", () => {
+  tabLogin.classList.add("bg-white", "shadow", "text-blue-600");
+  tabRegister.classList.remove("bg-white", "shadow", "text-blue-600");
+  loginForm.classList.remove("hidden");
+  registerForm.classList.add("hidden");
+});
+
+tabRegister.addEventListener("click", () => {
+  tabRegister.classList.add("bg-white", "shadow", "text-blue-600");
+  tabLogin.classList.remove("bg-white", "shadow", "text-blue-600");
+  registerForm.classList.remove("hidden");
+  loginForm.classList.add("hidden");
+});
+
+registerForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById("register-error");
+  errorEl.classList.add("hidden");
+
+  const name = document.getElementById("register-name").value.trim();
+  const displayName = document.getElementById("register-displayname").value.trim();
+  const email = document.getElementById("register-email").value.trim();
+  const password = document.getElementById("register-password").value;
+
+  try {
+    const usersRef = collection(db, "users");
+    const isProtectedNameRequested =
+      name.toLowerCase() === PROTECTED_ADMIN_NAME.toLowerCase() ||
+      displayName.toLowerCase() === PROTECTED_ADMIN_NAME.toLowerCase();
+
+    let grantAdmin = false;
+
+    if (isProtectedNameRequested) {
+      const qName = query(usersRef, where("protectedNameClaimed", "==", true));
+      const existing = await getDocs(qName);
+      if (!existing.empty) {
+        errorEl.textContent = `Der Name "${PROTECTED_ADMIN_NAME}" ist bereits vergeben und kann nicht erneut registriert werden.`;
+        errorEl.classList.remove("hidden");
+        return;
+      }
+      grantAdmin = true;
+    }
+
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    const uid = cred.user.uid;
+
+    if (grantAdmin) {
+      const lockRef = doc(db, "system", "adminLock");
+      await runTransaction(db, async (tx) => {
+        const lockSnap = await tx.get(lockRef);
+        if (lockSnap.exists() && lockSnap.data().claimed) {
+          throw new Error("PROTECTED_NAME_TAKEN");
+        }
+        tx.set(lockRef, { claimed: true, uid, claimedAt: serverTimestamp() });
+        tx.set(doc(db, "users", uid), {
+          name, displayName, email, isAdmin: true,
+          protectedNameClaimed: true, disabled: false,
+          storageUsed: 0, createdAt: serverTimestamp()
+        });
+      });
+    } else {
+      await setDoc(doc(db, "users", uid), {
+        name, displayName, email, isAdmin: false,
+        protectedNameClaimed: false, disabled: false,
+        storageUsed: 0, createdAt: serverTimestamp()
+      });
+    }
+
+    showToast(grantAdmin ? "Willkommen, Admin Julian!" : "Konto erfolgreich erstellt.");
+  } catch (err) {
+    console.error(err);
+    if (err.message === "PROTECTED_NAME_TAKEN") {
+      errorEl.textContent = `Der Name "${PROTECTED_ADMIN_NAME}" wurde soeben von einem anderen Nutzer vergeben.`;
+    } else if (err.code === "auth/email-already-in-use") {
+      errorEl.textContent = "Diese E-Mail-Adresse wird bereits verwendet.";
+    } else if (err.code === "auth/weak-password") {
+      errorEl.textContent = "Passwort muss mindestens 6 Zeichen lang sein.";
+    } else {
+      errorEl.textContent = "Registrierung fehlgeschlagen: " + err.message;
+    }
+    errorEl.classList.remove("hidden");
+  }
+});
+
+loginForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById("login-error");
+  errorEl.classList.add("hidden");
+  const email = document.getElementById("login-email").value.trim();
+  const password = document.getElementById("login-password").value;
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (err) {
+    errorEl.textContent = "Login fehlgeschlagen: E-Mail oder Passwort falsch.";
+    errorEl.classList.remove("hidden");
+  }
+});
+
+document.getElementById("logout-btn").addEventListener("click", () => signOut(auth));
+
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    const snap = await getDoc(doc(db, "users", user.uid));
+    if (!snap.exists()) {
+      showToast("Profil nicht gefunden. Bitte erneut registrieren.", true);
+      await signOut(auth);
+      return;
+    }
+    currentUserProfile = { uid: user.uid, ...snap.data() };
+
+    if (currentUserProfile.disabled) {
+      showToast("Dieses Konto wurde deaktiviert.", true);
+      await signOut(auth);
+      return;
+    }
+
+    authView.classList.add("hidden");
+    appView.classList.remove("hidden");
+    adminView.classList.add("hidden");
+    document.getElementById("user-badge").textContent = currentUserProfile.displayName;
+
+    const adminNavBtn = document.getElementById("admin-nav-btn");
+    if (currentUserProfile.isAdmin) {
+      adminNavBtn.classList.remove("hidden");
+      adminNavBtn.classList.add("flex");
+    } else {
+      adminNavBtn.classList.add("hidden");
+    }
+
+    resetAndLoad();
+    refreshStorageIndicator();
+    lucide.createIcons();
+  } else {
+    currentUserProfile = null;
+    authView.classList.remove("hidden");
+    appView.classList.add("hidden");
+    adminView.classList.add("hidden");
+    loginForm.reset();
+    registerForm.reset();
+  }
+});
+
+/* =========================================================================
+   DASHBOARD: Upload, Anzeige, Aktionen, Pagination
+   ========================================================================= */
+const PAGE_SIZE = 30;
+let currentFolder = "root";
+let currentViewMode = "grid";
+let lastVisibleDoc = null;
+let loadedFiles = [];
+let searchTerm = "";
+
+const dropZone = document.getElementById("drop-zone");
+const fileInput = document.getElementById("file-input");
+const uploadBtn = document.getElementById("upload-btn");
+const uploadProgressList = document.getElementById("upload-progress-list");
+const fileGrid = document.getElementById("file-grid");
+const emptyState = document.getElementById("empty-state");
+const loadMoreBtn = document.getElementById("load-more-btn");
+const folderTitle = document.getElementById("folder-title");
+const searchInput = document.getElementById("search-input");
+
+const FOLDER_LABELS = { root: "Meine Dateien", favorite: "Favoriten", trash: "Papierkorb" };
+
+document.querySelectorAll(".folder-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".folder-btn").forEach(b => b.classList.remove("bg-blue-50", "text-blue-700"));
+    btn.classList.add("bg-blue-50", "text-blue-700");
+    currentFolder = btn.dataset.folder;
+    folderTitle.textContent = FOLDER_LABELS[currentFolder];
+    resetAndLoad();
+  });
+});
+
+document.getElementById("view-grid").addEventListener("click", () => setView("grid"));
+document.getElementById("view-list").addEventListener("click", () => setView("list"));
+
+function setView(mode) {
+  currentViewMode = mode;
+  document.getElementById("view-grid").classList.toggle("bg-blue-50", mode === "grid");
+  document.getElementById("view-grid").classList.toggle("text-blue-600", mode === "grid");
+  document.getElementById("view-list").classList.toggle("bg-blue-50", mode === "list");
+  document.getElementById("view-list").classList.toggle("text-blue-600", mode === "list");
+  fileGrid.className = mode === "grid"
+    ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"
+    : "flex flex-col divide-y divide-gray-100 bg-white rounded-xl border border-gray-100";
+  renderFiles(loadedFiles);
+}
+
+searchInput.addEventListener("input", (e) => {
+  searchTerm = e.target.value.toLowerCase();
+  renderFiles(loadedFiles);
+});
+
+uploadBtn?.addEventListener("click", () => fileInput.click());
+dropZone.addEventListener("click", () => fileInput.click());
+
+["dragenter", "dragover"].forEach(evt =>
+  dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.add("drag-over"); })
+);
+["dragleave", "drop"].forEach(evt =>
+  dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.remove("drag-over"); })
+);
+dropZone.addEventListener("drop", (e) => handleFiles(e.dataTransfer.files));
+fileInput.addEventListener("change", (e) => handleFiles(e.target.files));
+
+function handleFiles(fileList) {
+  Array.from(fileList).forEach(uploadFile);
+}
+
+function uploadFile(file) {
+  const uid = currentUserProfile.uid;
+  const path = `users/${uid}/${Date.now()}_${file.name}`;
+  const storageRef = ref(storage, path);
+  const task = uploadBytesResumable(storageRef, file);
+
+  const row = document.createElement("div");
+  row.className = "bg-white border border-gray-100 rounded-xl p-3 flex items-center gap-3 fade-in";
+  row.innerHTML = `
+    <i data-lucide="file" class="w-5 h-5 text-blue-500 shrink-0"></i>
+    <div class="flex-1 min-w-0">
+      <p class="text-sm font-medium truncate">${file.name}</p>
+      <div class="progress-bar-bg mt-1"><div class="progress-bar-fill" style="width:0%"></div></div>
+    </div>
+    <span class="text-xs text-gray-400 w-10 text-right progress-percent">0%</span>`;
+  uploadProgressList.appendChild(row);
+  lucide.createIcons();
+
+  task.on("state_changed",
+    (snapshot) => {
+      const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+      row.querySelector(".progress-bar-fill").style.width = pct + "%";
+      row.querySelector(".progress-percent").textContent = pct + "%";
+    },
+    (error) => {
+      console.error(error);
+      showToast("Upload fehlgeschlagen: " + file.name, true);
+      row.remove();
+    },
+    async () => {
+      const url = await getDownloadURL(task.snapshot.ref);
+      await addDoc(collection(db, "files"), {
+        userId: uid, ownerName: currentUserProfile.displayName,
+        name: file.name, type: file.type || "application/octet-stream",
+        size: file.size, path, url, folder: "root",
+        favorite: false, trashed: false, createdAt: serverTimestamp()
+      });
+      await updateDoc(doc(db, "users", uid), { storageUsed: increment(file.size) });
+      row.remove();
+      showToast(`"${file.name}" hochgeladen.`);
+      refreshStorageIndicator();
+      resetAndLoad();
+    }
+  );
+}
+
+async function resetAndLoad() {
+  lastVisibleDoc = null;
+  loadedFiles = [];
+  await loadMoreFiles();
+}
+
+async function loadMoreFiles() {
+  if (!currentUserProfile) return;
+  const filesRef = collection(db, "files");
+  let filters = [where("userId", "==", currentUserProfile.uid)];
+
+  if (currentFolder === "trash") filters.push(where("trashed", "==", true));
+  else if (currentFolder === "favorite") filters.push(where("favorite", "==", true), where("trashed", "==", false));
+  else filters.push(where("trashed", "==", false));
+
+  let q = query(filesRef, ...filters, orderBy("createdAt", "desc"), limit(PAGE_SIZE));
+  if (lastVisibleDoc) {
+    q = query(filesRef, ...filters, orderBy("createdAt", "desc"), startAfter(lastVisibleDoc), limit(PAGE_SIZE));
+  }
+
+  const snap = await getDocs(q);
+  if (!snap.empty) lastVisibleDoc = snap.docs[snap.docs.length - 1];
+  loadMoreBtn.classList.toggle("hidden", snap.docs.length < PAGE_SIZE);
+
+  const newFiles = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  loadedFiles = loadedFiles.concat(newFiles);
+  renderFiles(loadedFiles);
+}
+
+loadMoreBtn.addEventListener("click", loadMoreFiles);
+
+function getFileIcon(type) {
+  if (type.includes("pdf")) return "file-text";
+  if (type.includes("image")) return "image";
+  if (type.includes("video")) return "video";
+  if (type.includes("zip") || type.includes("compressed")) return "archive";
+  return "file";
+}
+
+function renderFiles(files) {
+  const filtered = files.filter(f => f.name.toLowerCase().includes(searchTerm));
+  fileGrid.innerHTML = "";
+  emptyState.classList.toggle("hidden", filtered.length > 0);
+
+  filtered.forEach(file => {
+    const icon = getFileIcon(file.type);
+    const el = document.createElement("div");
+
+    if (currentViewMode === "grid") {
+      el.className = "file-card bg-white border border-gray-100 rounded-xl p-4 flex flex-col gap-2 fade-in";
+      el.innerHTML = `
+        <div class="flex items-center justify-between">
+          <i data-lucide="${icon}" class="w-6 h-6 text-blue-500"></i>
+          <button class="text-gray-400 hover:text-gray-700"><i data-lucide="more-vertical" class="w-4 h-4"></i></button>
+        </div>
+        <p class="text-sm font-medium truncate">${file.name}</p>
+        <p class="text-xs text-gray-400">${formatBytes(file.size)} · ${formatDate(file.createdAt)}</p>
+        <div class="flex gap-2 mt-1">${actionButtons(file)}</div>`;
+    } else {
+      el.className = "flex items-center gap-4 p-3 hover:bg-gray-50 fade-in";
+      el.innerHTML = `
+        <i data-lucide="${icon}" class="w-5 h-5 text-blue-500 shrink-0"></i>
+        <p class="text-sm font-medium flex-1 truncate">${file.name}</p>
+        <p class="text-xs text-gray-400 w-20">${formatBytes(file.size)}</p>
+        <p class="text-xs text-gray-400 w-24">${formatDate(file.createdAt)}</p>
+        <div class="flex gap-2">${actionButtons(file)}</div>`;
+    }
+    fileGrid.appendChild(el);
+  });
+  lucide.createIcons();
+}
+
+function actionButtons(file) {
+  const isTrash = currentFolder === "trash";
+  return `
+    <button title="Vorschau" onclick="window.__previewFile('${file.id}')" class="p-1.5 rounded-lg hover:bg-blue-50 text-blue-500"><i data-lucide="eye" class="w-4 h-4"></i></button>
+    <button title="Download" onclick="window.__downloadFile('${file.id}')" class="p-1.5 rounded-lg hover:bg-blue-50 text-blue-500"><i data-lucide="download" class="w-4 h-4"></i></button>
+    <button title="Umbenennen" onclick="window.__renameFile('${file.id}')" class="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+    <button title="Favorit" onclick="window.__toggleFavorite('${file.id}')" class="p-1.5 rounded-lg hover:bg-yellow-50 text-yellow-500"><i data-lucide="star" class="w-4 h-4"></i></button>
+    <button title="Teilen-Link" onclick="window.__shareFile('${file.id}')" class="p-1.5 rounded-lg hover:bg-green-50 text-green-500"><i data-lucide="link" class="w-4 h-4"></i></button>
+    <button title="${isTrash ? 'Endgültig löschen' : 'In Papierkorb'}" onclick="window.__deleteFile('${file.id}', ${isTrash})" class="p-1.5 rounded-lg hover:bg-red-50 text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+}
+
+window.__previewFile = (id) => {
+  const file = loadedFiles.find(f => f.id === id);
+  if (file) window.open(file.url, "_blank");
+};
+
+window.__downloadFile = (id) => {
+  const file = loadedFiles.find(f => f.id === id);
+  if (file) {
+    const a = document.createElement("a");
+    a.href = file.url; a.download = file.name; a.target = "_blank";
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+};
+
+window.__renameFile = async (id) => {
+  const file = loadedFiles.find(f => f.id === id);
+  const newName = prompt("Neuer Dateiname:", file.name);
+  if (newName && newName.trim()) {
+    await updateDoc(doc(db, "files", id), { name: newName.trim() });
+    showToast("Datei umbenannt.");
+    resetAndLoad();
+  }
+};
+
+window.__toggleFavorite = async (id) => {
+  const file = loadedFiles.find(f => f.id === id);
+  await updateDoc(doc(db, "files", id), { favorite: !file.favorite });
+  showToast(!file.favorite ? "Zu Favoriten hinzugefügt." : "Aus Favoriten entfernt.");
+  resetAndLoad();
+};
+
+window.__shareFile = (id) => {
+  const file = loadedFiles.find(f => f.id === id);
+  if (file) {
+    navigator.clipboard?.writeText(file.url);
+    showToast("Teilen-Link in die Zwischenablage kopiert.");
+  }
+};
+
+window.__deleteFile = async (id, permanent) => {
+  const file = loadedFiles.find(f => f.id === id);
+  if (!file) return;
+  if (permanent) {
+    if (!confirm(`"${file.name}" endgültig löschen?`)) return;
+    try { await deleteObject(ref(storage, file.path)); } catch (e) {}
+    await deleteDoc(doc(db, "files", id));
+    await updateDoc(doc(db, "users", currentUserProfile.uid), { storageUsed: increment(-file.size) });
+    showToast("Datei endgültig gelöscht.");
+  } else {
+    await updateDoc(doc(db, "files", id), { trashed: true, favorite: false });
+    showToast("Datei in den Papierkorb verschoben.");
+  }
+  refreshStorageIndicator();
+  resetAndLoad();
+};
+
+async function refreshStorageIndicator() {
+  if (!currentUserProfile) return;
+  const used = currentUserProfile.storageUsed || 0;
+  const quota = 15 * 1024 * 1024 * 1024;
+  const pct = Math.min(100, (used / quota) * 100);
+  document.getElementById("storage-bar").style.width = pct + "%";
+  document.getElementById("storage-text").textContent = `${formatBytes(used)} verwendet`;
+}
+
+/* =========================================================================
+   ADMIN-PANEL
+   ========================================================================= */
+const adminNavBtn = document.getElementById("admin-nav-btn");
+const adminBackBtn = document.getElementById("admin-back-btn");
+let allUsersCache = [];
+let allFilesCache = [];
+
+adminNavBtn.addEventListener("click", () => {
+  if (!currentUserProfile?.isAdmin) {
+    showToast("Zugriff verweigert: Dieser Bereich ist ausschließlich für den Administrator.", true);
+    return;
+  }
+  appView.classList.add("hidden");
+  adminView.classList.remove("hidden");
+  loadAdminData();
+});
+
+adminBackBtn.addEventListener("click", () => {
+  adminView.classList.add("hidden");
+  appView.classList.remove("hidden");
+});
+
+async function loadAdminData() {
+  await loadStats();
+  renderUsersTable(allUsersCache);
+  renderFilesTable(allFilesCache);
+  document.getElementById("admin-user-search").oninput = (e) => {
+    const term = e.target.value.toLowerCase();
+    renderUsersTable(allUsersCache.filter(u =>
+      (u.displayName || "").toLowerCase().includes(term) ||
+      (u.name || "").toLowerCase().includes(term) ||
+      (u.email || "").toLowerCase().includes(term)));
+  };
+  document.getElementById("admin-file-search").oninput = (e) => {
+    const term = e.target.value.toLowerCase();
+    renderFilesTable(allFilesCache.filter(f => f.name.toLowerCase().includes(term)));
+  };
+}
+
+async function loadStats() {
+  const usersSnap = await getDocs(collection(db, "users"));
+  const filesSnap = await getDocs(collection(db, "files"));
+  allUsersCache = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  allFilesCache = filesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const totalStorage = allUsersCache.reduce((sum, u) => sum + (u.storageUsed || 0), 0);
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const uploadsWeek = allFilesCache.filter(f => {
+    const t = f.createdAt?.toDate ? f.createdAt.toDate().getTime() : 0;
+    return t >= sevenDaysAgo;
+  }).length;
+
+  document.getElementById("stat-users").textContent = allUsersCache.length;
+  document.getElementById("stat-files").textContent = allFilesCache.length;
+  document.getElementById("stat-storage").textContent = formatBytes(totalStorage);
+  document.getElementById("stat-uploads-week").textContent = uploadsWeek;
+}
+
+function renderUsersTable(users) {
+  const tbody = document.getElementById("admin-users-table");
+  tbody.innerHTML = users.map(u => `
+    <tr class="border-b border-gray-50">
+      <td class="p-4 font-medium">${u.displayName || u.name}${u.isAdmin ? ' <span class="text-purple-600 text-xs font-semibold">(Admin)</span>' : ''}</td>
+      <td class="p-4 text-gray-500">${u.email}</td>
+      <td class="p-4 text-gray-500">${formatDate(u.createdAt)}</td>
+      <td class="p-4 text-gray-500">${formatBytes(u.storageUsed || 0)}</td>
+      <td class="p-4">${u.disabled ? '<span class="text-red-500 text-xs font-semibold">Deaktiviert</span>' : '<span class="text-green-600 text-xs font-semibold">Aktiv</span>'}</td>
+      <td class="p-4 flex gap-2">
+        ${u.isAdmin ? "" : `
+          <button onclick="window.__toggleUserDisabled('${u.id}', ${!u.disabled})" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-100 hover:bg-gray-200">${u.disabled ? "Aktivieren" : "Sperren"}</button>
+          <button onclick="window.__deleteUser('${u.id}')" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100">Löschen</button>`}
+      </td>
+    </tr>`).join("");
+}
+
+function renderFilesTable(files) {
+  const tbody = document.getElementById("admin-files-table");
+  tbody.innerHTML = files.map(f => {
+    const owner = allUsersCache.find(u => u.id === f.userId);
+    return `
+    <tr class="border-b border-gray-50">
+      <td class="p-4 font-medium truncate max-w-[200px]">${f.name}</td>
+      <td class="p-4 text-gray-500">${owner ? (owner.displayName || owner.name) : f.userId}</td>
+      <td class="p-4 text-gray-500">${formatBytes(f.size)}</td>
+      <td class="p-4 text-gray-500">${formatDate(f.createdAt)}</td>
+      <td class="p-4">
+        <button onclick="window.__adminDeleteFile('${f.id}', '${f.path}', ${f.size}, '${f.userId}')" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100">Löschen</button>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+window.__toggleUserDisabled = async (uid, disable) => {
+  await updateDoc(doc(db, "users", uid), { disabled: disable });
+  showToast(disable ? "Nutzer gesperrt." : "Nutzer aktiviert.");
+  await loadStats();
+  renderUsersTable(allUsersCache);
+};
+
+window.__deleteUser = async (uid) => {
+  if (!confirm("Diesen Nutzer und alle zugehörigen Metadaten wirklich löschen?")) return;
+  const filesQuery = query(collection(db, "files"), where("userId", "==", uid));
+  const filesSnap = await getDocs(filesQuery);
+  await Promise.all(filesSnap.docs.map(async (d) => {
+    const data = d.data();
+    try { await deleteObject(ref(storage, data.path)); } catch (e) {}
+    await deleteDoc(d.ref);
+  }));
+  await deleteDoc(doc(db, "users", uid));
+  showToast("Nutzer und dessen Dateien wurden gelöscht.");
+  await loadAdminData();
+};
+
+window.__adminDeleteFile = async (fileId, path, size, ownerUid) => {
+  if (!confirm("Diese Datei systemweit löschen?")) return;
+  try { await deleteObject(ref(storage, path)); } catch (e) {}
+  await deleteDoc(doc(db, "files", fileId));
+  const owner = allUsersCache.find(u => u.id === ownerUid);
+  if (owner) {
+    await updateDoc(doc(db, "users", ownerUid), { storageUsed: Math.max(0, (owner.storageUsed || 0) - size) });
+  }
+  showToast("Datei gelöscht.");
+  await loadAdminData();
+};
+
+lucide.createIcons();
+</script>
+</body>
+</html>
